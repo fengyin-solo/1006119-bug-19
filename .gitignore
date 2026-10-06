@@ -85,3 +85,8 @@ desktop.ini
 *.db
 *.pid
 *.seed
+
+# 进度领域测试临时编译产物
+.tmp-test/
+.tmp-dbg/
+.tmp-domain-test.mjs

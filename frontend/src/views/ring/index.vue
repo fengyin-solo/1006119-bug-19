@@ -67,6 +67,23 @@
       <span>共 {{ total }} 条掘进环次记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <section class="filter-bar" style="flex-direction:column;align-items:flex-start;margin-top:12px">
+      <strong>掘进环次交付清单（进度节点导出结论｜台账已完成节点：{{ completedNodes }}）</strong>
+      <table class="data-table" v-if="deliveries.length">
+        <thead><tr><th>任务号</th><th>时间</th><th>导出条数</th><th>已完成节点</th><th>结论</th><th>偏差算法</th></tr></thead>
+        <tbody>
+          <tr v-for="d in deliveries" :key="d.id">
+            <td>{{ d.packageId }}</td><td>{{ d.at.slice(0, 16).replace('T', ' ') }}</td>
+            <td>{{ d.exportedCount }}</td><td>{{ d.completedCount }}</td>
+            <td>{{ d.conclusion }}</td><td>{{ d.deviationVersion }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <span v-else class="legend-item">暂无交付记录</span>
+      <button class="btn ghost" type="button" @click="recomputeDeviation">按台账新算法重算清单偏差</button>
+      <span v-if="recomputeTip" class="legend-item">{{ recomputeTip }}</span>
+    </section>
   </section>
 </template>
 
@@ -79,6 +96,8 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { getProgressStats, listProgressDeliveries, recomputeProgressDeliveries } from '@/data/progress'
+import type { DeliveryItem } from '@/data/progress'
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('ring')
@@ -131,6 +150,15 @@ function reload() {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '掘进环次列表读取失败'
   }
+}
+
+const deliveries = ref<DeliveryItem[]>(listProgressDeliveries())
+const recomputeTip = ref('')
+const completedNodes = computed(() => getProgressStats().completed)
+
+function recomputeDeviation() {
+  deliveries.value = recomputeProgressDeliveries()
+  recomputeTip.value = '已生成的交付清单已按节点台账新偏差算法重算，已完成节点数两边一致'
 }
 
 onMounted(reload)

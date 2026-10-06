@@ -1,5 +1,6 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import { exportProgress, completeProgressNode, transitionProgressNode } from '@/data/progress'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -29,6 +30,27 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
 }
 
 export function runAction(key: string, id: number, action: string): ActionResult {
+  if (key === 'progress') {
+    // 进度节点动作走领域台账：确认完成只写实际完成日，计划完成日冻结、绝不被改写。
+    const row = listRows(key).find((item) => Number(item.id) === id)
+    if (!row) {
+      return { ok: false, message: `没有找到编号为 ${id} 的进度节点` }
+    }
+    const code = String(row['节点编号'] ?? '')
+    if (action === '确认完成') {
+      const today = new Date().toISOString().slice(0, 10)
+      const result = completeProgressNode(code, today, Number(row['实际完成量'] ?? row['计划掘进量'] ?? 0))
+      return { ok: result.ok, message: result.message }
+    }
+    if (action === '开始节点') {
+      const result = transitionProgressNode(code, '进行中')
+      return { ok: result.ok, message: result.message }
+    }
+    if (action === '登记延期') {
+      const result = transitionProgressNode(code, '已延期')
+      return { ok: result.ok, message: result.message }
+    }
+  }
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
@@ -62,6 +84,11 @@ export function resetModule(key: string): PageResult {
 }
 
 export function exportEntries(key: string): { filename: string; content: string } {
+  if (key === 'progress') {
+    // 导出文件与列表、册子共用领域快照：列固定、缺列逐格标出、补录节点一并导出。
+    const snapshot = exportProgress()
+    return { filename: snapshot.filename, content: snapshot.content }
+  }
   const meta = moduleMeta(key)
   const header = ['编号', ...meta.fields, '当前状态']
   const lines = [header.join(',')]
