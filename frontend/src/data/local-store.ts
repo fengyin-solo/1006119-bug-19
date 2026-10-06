@@ -57,3 +57,8 @@ export function resetRows(key: string): EntryRow[] {
 export function storageKey(): string {
   return STORAGE_KEY
 }
+
+/** 仅供测试：切换存储适配器后清掉模块级缓存，避免读到上一个适配器的数据。 */
+export function __resetStoreCacheForTest(): void {
+  cache = null
+}

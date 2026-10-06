@@ -15,6 +15,20 @@
         <strong class="stat-value">{{ card.value }}</strong>
       </article>
     </div>
+    <div class="stat-row">
+      <article class="stat-card">
+        <span class="stat-label">进度节点 · 在办（与节点列表同一份台账）</span>
+        <strong class="stat-value">{{ progress.active }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">进度节点 · 已完成（与交付清单同函数）</span>
+        <strong class="stat-value">{{ progress.done }}</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">进度节点 · 补录</span>
+        <strong class="stat-value">{{ progress.backfilled }}</strong>
+      </article>
+    </div>
     <table class="data-table">
       <thead>
         <tr><th>业务模块</th><th>今日新增</th><th>待处理</th><th>异常量</th></tr>
@@ -37,16 +51,19 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 
-import { loadOverview } from '@/api/local-service'
+import { loadOverview, progressStats } from '@/api/local-service'
 import type { OverviewResult } from '@/data/types'
+import type { ProgressStats } from '@/data/progress-ledger'
 
 const cards = ref<OverviewResult['cards']>([])
 const moduleRows = ref<OverviewResult['modules']>([])
+const progress = ref<ProgressStats>({ total: 0, active: 0, done: 0, delayed: 0, backfilled: 0 })
 
 function refresh() {
   const payload = loadOverview()
   cards.value = payload.cards
   moduleRows.value = payload.modules
+  progress.value = progressStats()
 }
 
 onMounted(refresh)

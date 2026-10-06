@@ -1,9 +1,42 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import {
+  applyNodeAction,
+  bootstrapProgress,
+  changePlanDate,
+  createNode,
+  presentLedger,
+  progressStats,
+  type CreateNodeInput,
+} from '@/data/progress-ledger'
+import { buildRow, exportProgressCsv, listJobs, missingColumns } from '@/data/progress-export'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
+
+// 进度节点台账引导（安装 + 通用清单同步），幂等。
+let progressEnsured = false
+function ensureProgress(): void {
+  if (progressEnsured) {
+    return
+  }
+  bootstrapProgress()
+  progressEnsured = true
+}
+
+export {
+  applyNodeAction,
+  bootstrapProgress,
+  changePlanDate,
+  createNode,
+  listJobs,
+  presentLedger,
+  progressStats,
+  buildRow as progressExportRow,
+  missingColumns as progressMissingColumns,
+}
+export type { CreateNodeInput }
 
 export function moduleMeta(key: string): ModuleMeta {
   const meta = MODULE_BY_KEY.get(key)
@@ -23,12 +56,26 @@ export function filterRows(rows: EntryRow[], filters: Record<string, string>): E
   )
 }
 
+/**
+ * 列表唯一入口：
+ * 进度节点（progress）只从台账读，页面、导出、册子共用同一份数据，补录节点也在这里面；
+ * 其他模块仍走本地清单。
+ */
 export function listEntries(key: string, filters: Record<string, string> = {}): PageResult {
+  if (key === 'progress') {
+    ensureProgress()
+    const rows = filterRows(presentLedger(), filters)
+    return { items: rows, total: rows.length, page: 1, size: rows.length }
+  }
   const matched = filterRows(listRows(key), filters)
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
 export function runAction(key: string, id: number, action: string): ActionResult {
+  if (key === 'progress') {
+    ensureProgress()
+    return applyNodeAction(id, action)
+  }
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
@@ -61,14 +108,22 @@ export function resetModule(key: string): PageResult {
   return listEntries(key)
 }
 
+/**
+ * 导出 CSV：进度节点与列表页同一份取数（台账），
+ * 列顺序固定含「计划完成日」整列；缺栏单元格写【缺栏】，末尾「缺栏列」逐列列名。
+ */
 export function exportEntries(key: string): { filename: string; content: string } {
   const meta = moduleMeta(key)
+  if (key === 'progress') {
+    ensureProgress()
+    return { filename: `${meta.name}-清单.csv`, content: exportProgressCsv() }
+  }
   const header = ['编号', ...meta.fields, '当前状态']
   const lines = [header.join(',')]
   for (const row of listRows(key)) {
     lines.push([row.id, ...meta.fields.map((field) => row[field] ?? ''), row.status].join(','))
   }
-  return { filename: `${meta.name}-清单.csv`, content: `\uFEFF${lines.join('\n')}` }
+  return { filename: `${meta.name}-清单.csv`, content: `﻿${lines.join('\n')}` }
 }
 
 export function downloadEntries(key: string): void {
@@ -85,6 +140,8 @@ export function downloadEntries(key: string): void {
 }
 
 export function loadOverview(): OverviewResult {
+  // 台账引导后把派生数据同步到通用清单，概览页与进度页条数永远来自同一份台账。
+  ensureProgress()
   const rows = allRows()
   const modules = [...MODULE_BY_KEY.values()].map((meta) => {
     const entries = rows[meta.key] ?? []
